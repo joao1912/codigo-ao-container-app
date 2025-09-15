@@ -8,4 +8,4 @@ RUN npm install --omit=dev
 COPY dist ./dist
 
 EXPOSE 80
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/index.js"]
