@@ -82,38 +82,33 @@ spec:
         }
 
         stage('Build & Push Docker Image') {
-            steps {
-                container('kaniko') {
-                    withCredentials([
-                        [
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws-ecr-credentials',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]
-                    ]) {
-                        sh '''
-                            echo "Autenticando no ECR..."
-                            apk add --no-cache aws-cli
+          steps {
+              container('kaniko') {
+                  withCredentials([
+                      [
+                          $class: 'AmazonWebServicesCredentialsBinding',
+                          credentialsId: 'aws-ecr-credentials',
+                          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                      ]
+                  ]) {
+                      sh '''
+                          echo "Construindo e enviando imagem para o ECR..."
 
-                            mkdir -p /kaniko/.docker
-                            ECR_TOKEN=$(aws ecr get-login-password --region $AWS_REGION)
-                            echo "{\\"auths\\":{\\"$ECR_REGISTRY\\":{\\"username\\":\\"AWS\\",\\"password\\":\\"$ECR_TOKEN\\"}}}" > /kaniko/.docker/config.json
-
-                            echo "Construindo e enviando imagem..."
-                            /kaniko/executor \
-                              --dockerfile=$DOCKERFILE_PATH \
-                              --context=dir://. \
-                              --destination=$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG \
-                              --destination=$ECR_REGISTRY/$IMAGE_NAME:latest \
-                              --cache=true \
-                              --cache-ttl=24h \
-                              --cleanup
-                        '''
-                    }
-                }
-            }
+                          /kaniko/executor \
+                            --dockerfile=$DOCKERFILE_PATH \
+                            --context=dir://. \
+                            --destination=$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG \
+                            --destination=$ECR_REGISTRY/$IMAGE_NAME:latest \
+                            --cache=true \
+                            --cache-ttl=24h \
+                            --cleanup
+                      '''
+                  }
+              }
+          }
         }
+
 
         stage('Update Kubernetes Manifests') {
             when { branch 'main' }
