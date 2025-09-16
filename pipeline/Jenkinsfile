@@ -82,52 +82,52 @@ spec:
         }
 
         stage('Build & Push Docker Image') {
-            steps {
-                container('kaniko') {
-                  withCredentials([
-                      [
-                          $class: 'AmazonWebServicesCredentialsBinding',
-                          credentialsId: 'aws-ecr-credentials',
-                          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                      ],
-                      string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')
-                  ]) {
-                      sh '''
-                          set -euo pipefail
+          steps {
+              container('kaniko') {
+                withCredentials([
+                    [
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-ecr-credentials',
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ],
+                    string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')
+                ]) {
+                    sh '''
+                        set -euo pipefail
 
-                          # se não tiver AWS_REGION configurada em outro lugar, define default
-                          : "${AWS_REGION:=us-east-1}"
+                        # se não tiver AWS_REGION configurada em outro lugar, define default
+                        : "${AWS_REGION:=us-east-1}"
 
-                          # validações rápidas
-                          if [ -z "$AWS_ACCOUNT_ID" ]; then
-                            echo "ERROR: AWS_ACCOUNT_ID não set. Crie um credential 'aws-account-id' ou defina AWS_ACCOUNT_ID no ambiente do job."
-                            exit 1
-                          fi
+                        # validações rápidas
+                        if [ -z "$AWS_ACCOUNT_ID" ]; then
+                          echo "ERROR: AWS_ACCOUNT_ID não set. Crie um credential 'aws-account-id' ou defina AWS_ACCOUNT_ID no ambiente do job."
+                          exit 1
+                        fi
 
-                          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-                          echo "ECR_REGISTRY=${ECR_REGISTRY}"
+                        ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                        echo "ECR_REGISTRY=${ECR_REGISTRY}"
 
-                          echo "Construindo e enviando imagem para ${ECR_REGISTRY}/${IMAGE_NAME}:${BUILD_TAG}"
+                        echo "Construindo e enviando imagem para ${ECR_REGISTRY}/${IMAGE_NAME}:${BUILD_TAG}"
 
-                          /kaniko/executor \
-                            --dockerfile=$DOCKERFILE_PATH \
-                            --context=dir://. \
-                            --destination=$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG \
-                            --destination=$ECR_REGISTRY/$IMAGE_NAME:latest \
-                            --cache=true \
-                            --cache-ttl=24h \
-                            --cleanup
-                      '''
-                  }
+                        /kaniko/executor \
+                          --dockerfile=$DOCKERFILE_PATH \
+                          --context=dir://. \
+                          --destination=$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG \
+                          --destination=$ECR_REGISTRY/$IMAGE_NAME:latest \
+                          --cache=true \
+                          --cache-ttl=24h \
+                          --cleanup
+                    '''
                 }
-            }
+              }
           }
-
-
+        }
 
         stage('Update Kubernetes Manifests') {
-            when { branch 'main' }
+            when {
+              expression { env.BRANCH_NAME == 'main' }
+            }
             steps {
                 container('node') {
                     sh '''
