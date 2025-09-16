@@ -44,11 +44,7 @@ spec:
     stage('Install Dependencies') {
       steps {
         withEphemeralContainer(
-          image: 'node:18-alpine',
-          resources: [
-            requests: [memory: '512Mi', cpu: '250m'],
-            limits: [memory: '1Gi', cpu: '500m']
-          ]
+          image: 'node:18-alpine'
         ) {
           sh '''
             echo "Instalando dependências..."
@@ -61,11 +57,7 @@ spec:
     stage('Build Application') {
       steps {
         withEphemeralContainer(
-          image: 'node:18-alpine',
-          resources: [
-            requests: [memory: '512Mi', cpu: '250m'],
-            limits: [memory: '1Gi', cpu: '500m']
-          ]
+          image: 'node:18-alpine'
         ) {
           sh '''
             echo "Realizando build da aplicação..."
@@ -78,11 +70,7 @@ spec:
     stage('Run Tests') {
       steps {
         withEphemeralContainer(
-          image: 'node:18-alpine',
-          resources: [
-            requests: [memory: '512Mi', cpu: '250m'],
-            limits: [memory: '1Gi', cpu: '500m']
-          ]
+          image: 'node:18-alpine'
         ) {
           sh '''
             echo "Executando testes..."
@@ -111,10 +99,6 @@ spec:
                 envVar(key: 'AWS_ACCESS_KEY_ID', value: env.AWS_ACCESS_KEY_ID),
                 envVar(key: 'AWS_SECRET_ACCESS_KEY', value: env.AWS_SECRET_ACCESS_KEY),
                 envVar(key: 'AWS_REGION', value: env.AWS_REGION)
-              ],
-              resources: [
-                requests: [memory: '1Gi', cpu: '500m'],
-                limits: [memory: '2Gi', cpu: '1000m']
               ]
             ) {
               sh '''
@@ -160,11 +144,7 @@ spec:
             )
           ]) {
             withEphemeralContainer(
-              image: 'alpine/git:latest',
-              resources: [
-                requests: [memory: '256Mi', cpu: '100m'],
-                limits: [memory: '512Mi', cpu: '250m']
-              ]
+              image: 'alpine/git:latest'
             ) {
               sh '''
                 
