@@ -125,9 +125,6 @@ spec:
         }
 
         stage('Update Kubernetes Manifests') {
-            when {
-              expression { env.BRANCH_NAME == 'main' }
-            }
             steps {
                 container('node') {
                     sh '''
