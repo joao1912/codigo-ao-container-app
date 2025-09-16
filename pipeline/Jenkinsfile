@@ -131,9 +131,7 @@ spec:
 
                       echo "Atualizando manifests Kubernetes..."
 
-                      # Clona o repositório com os manifests
-                      git clone https://github.com/joao1912/codigo-ao-container-app.git k8s-manifests
-                      ls -la k8s-manifests
+                      git clone https://github.com/joao1912/codigo-ao-container-infra.git k8s-manifests
                       cd k8s-manifests/k8s
 
                       if [ ! -f deployment.yaml ]; then
