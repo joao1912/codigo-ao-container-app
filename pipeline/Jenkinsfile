@@ -53,7 +53,7 @@ spec:
                 container('node') {
                     sh '''
                         echo "Instalando dependências..."
-                        npm ci --only=production --no-audit --progress=false
+                        npm i
                     '''
                 }
             }
