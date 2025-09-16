@@ -1,79 +1,213 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-job-runner
+  containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+"""
+    }
+  }
   
   environment {
     AWS_ACCOUNT_ID = credentials('aws-account-id')
-    AWS_REGION = 'us-east-1'
+    AWS_REGION = credentials('aws-region')
     ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
     IMAGE_NAME = 'app-node'
-    K8S_REPO = 'https://github.com/joao1912/codigo-ao-container-infra.git'
+    K8S_REPO = credentials('k8s-repo-url')
+    DOCKERFILE_PATH = './Dockerfile'
   }
 
   stages {
-    stage('Install Packages') {
+    stage('Checkout') {
       steps {
-        sh 'echo "Instalando pacotes..."'
-        sh 'npm i'
-      }
-    }
-
-    stage('Building Project') {
-      steps {
-        sh 'echo "Realizando o build dos arquivos..."'
-        sh 'npm run build'
-      }
-    }
-
-    stage('Running tests') {
-      steps {
-        sh 'echo "Executando os testes..."'
-        sh 'npm run test'
-      }
-    }
-
-    stage('Building Docker Image') {
-      steps {
+        checkout scm
         script {
-          sh 'echo "Realizando o build da imagem docker..."'
-          commitId = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-          dockerapp = docker.build("${IMAGE_NAME}:${commitId}", "-f Dockerfile .")
+          env.COMMIT_ID = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          env.BUILD_TAG = "${env.COMMIT_ID}-${env.BUILD_NUMBER}"
+          echo "Build Tag: ${env.BUILD_TAG}"
         }
       }
     }
 
-    stage('Pushing Docker Image') {
+    stage('Install Dependencies') {
+      steps {
+        withEphemeralContainer(
+          image: 'node:18-alpine',
+          resources: [
+            requests: [memory: '512Mi', cpu: '250m'],
+            limits: [memory: '1Gi', cpu: '500m']
+          ]
+        ) {
+          sh '''
+            echo "Instalando dependências..."
+            npm ci --only=production --no-audit --progress=false
+          '''
+        }
+      }
+    }
+
+    stage('Build Application') {
+      steps {
+        withEphemeralContainer(
+          image: 'node:18-alpine',
+          resources: [
+            requests: [memory: '512Mi', cpu: '250m'],
+            limits: [memory: '1Gi', cpu: '500m']
+          ]
+        ) {
+          sh '''
+            echo "Realizando build da aplicação..."
+            npm run build
+          '''
+        }
+      }
+    }
+
+    stage('Run Tests') {
+      steps {
+        withEphemeralContainer(
+          image: 'node:18-alpine',
+          resources: [
+            requests: [memory: '512Mi', cpu: '250m'],
+            limits: [memory: '1Gi', cpu: '500m']
+          ]
+        ) {
+          sh '''
+            echo "Executando testes..."
+            npm run test
+          '''
+        }
+      }
+    }
+
+    stage('Build & Push Docker Image') {
       steps {
         script {
-          docker.withRegistry("https://${ECR_REGISTRY}", 'aws-ecr-credentials') {
-            dockerapp.push(commitId)
-            dockerapp.push("latest")
+          echo "Construindo imagem Docker..."
+          
+          withCredentials([
+            [
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-ecr-credentials',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+            ]
+          ]) {
+            withEphemeralContainer(
+              image: 'gcr.io/kaniko-project/executor:debug',
+              envVars: [
+                envVar(key: 'AWS_ACCESS_KEY_ID', value: env.AWS_ACCESS_KEY_ID),
+                envVar(key: 'AWS_SECRET_ACCESS_KEY', value: env.AWS_SECRET_ACCESS_KEY),
+                envVar(key: 'AWS_REGION', value: env.AWS_REGION)
+              ],
+              resources: [
+                requests: [memory: '1Gi', cpu: '500m'],
+                limits: [memory: '2Gi', cpu: '1000m']
+              ]
+            ) {
+              sh '''
+                echo "Configurando autenticação ECR..."
+                
+                apk add --no-cache aws-cli
+                
+                aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+                
+                mkdir -p /kaniko/.docker
+                
+                ECR_TOKEN=$(aws ecr get-login-password --region $AWS_REGION)
+                echo "{\\"auths\\":{\\"$ECR_REGISTRY\\":{\\"username\\":\\"AWS\\",\\"password\\":\\"$ECR_TOKEN\\"}}}" > /kaniko/.docker/config.json
+                
+                echo "Construindo e enviando imagem..."
+                /kaniko/executor \\
+                  --dockerfile=$DOCKERFILE_PATH \\
+                  --context=dir://. \\
+                  --destination=$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG \\
+                  --destination=$ECR_REGISTRY/$IMAGE_NAME:latest \\
+                  --cache=true \\
+                  --cache-ttl=24h \\
+                  --cleanup
+              '''
+            }
           }
         }
       }
     }
 
-    stage('Update K8s Manifests') {
+    stage('Update Kubernetes Manifests') {
+      when {
+        branch 'main'
+      }
       steps {
         script {
-          dir('k8s-manifests') {
-            git credentialsId: 'git-credentials', 
-                url: "${K8S_REPO}",
-                branch: 'main'
-
-            cd 'k8s'
-            
-            sh """
-              echo "Atualizando deployment.yaml com imagem: ${ECR_REGISTRY}/${IMAGE_NAME}:${commitId}"
-              sed -i 's|image: .*${IMAGE_NAME}:.*|image: ${ECR_REGISTRY}/${IMAGE_NAME}:${commitId}|g' deployment.yaml
-            """
-            
-            sh """
-              git config user.name "Jenkins"
-              git config user.email "jenkins@empresa.com"
-              git add deployment.yaml
-              git commit -m "Update ${IMAGE_NAME} to ${commitId}"
-              git push origin main
-            """
+          echo "Atualizando manifests Kubernetes..."
+          
+          withCredentials([
+            gitUsernamePassword(
+              credentialsId: 'git-credentials',
+              gitToolName: 'Default'
+            )
+          ]) {
+            withEphemeralContainer(
+              image: 'alpine/git:latest',
+              resources: [
+                requests: [memory: '256Mi', cpu: '100m'],
+                limits: [memory: '512Mi', cpu: '250m']
+              ]
+            ) {
+              sh '''
+                
+                git config --global user.name "Jenkins CI"
+                git config --global user.email "jenkins@empresa.com"
+                git config --global init.defaultBranch main
+                
+                echo "Clonando repositório de manifests..."
+                git clone $K8S_REPO k8s-manifests
+                cd k8s-manifests/k8s
+                
+                if [ ! -f deployment.yaml ]; then
+                  echo "Arquivo deployment.yaml não encontrado!"
+                  exit 1
+                fi
+                
+                echo "Atualizando imagem no deployment..."
+                echo "Nova imagem: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG"
+                
+                if command -v yq > /dev/null; then
+                  yq eval ".spec.template.spec.containers[0].image = \\"$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG\\"" -i deployment.yaml
+                else
+                  sed -i "s|image: .*/$IMAGE_NAME:.*|image: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG|g" deployment.yaml
+                fi
+                
+                if git diff --quiet deployment.yaml; then
+                  echo "Nenhuma mudança detectada no deployment.yaml"
+                  exit 0
+                fi
+                
+                echo "Commitando mudanças..."
+                git add deployment.yaml
+                git commit -m "Deploy $IMAGE_NAME:$BUILD_TAG
+                
+                - Build: $BUILD_NUMBER
+                - Commit: $COMMIT_ID
+                - Pipeline: $BUILD_URL"
+                
+                git push origin main
+                
+                echo "Manifests atualizados com sucesso!"
+              '''
+            }
           }
         }
       }
@@ -82,14 +216,33 @@ pipeline {
 
   post {
     always {
-      sh 'echo "Pipeline finalizada!"'
+      cleanWs(
+        deleteDirs: true,
+        notFailBuild: true,
+        patterns: [[pattern: 'k8s-manifests', type: 'INCLUDE']]
+      )
     }
+    
     success {
-      sh 'echo "Deploy realizado com sucesso!"'
-      sh 'echo "Imagem: ${ECR_REGISTRY}/${IMAGE_NAME}:${commitId}"'
+      script {
+        echo "Deploy realizado com sucesso!"
+        echo "Imagem: ${env.ECR_REGISTRY}/${env.IMAGE_NAME}:${env.BUILD_TAG}"
+        
+        if (env.BRANCH_NAME == 'main') {
+          echo "Aplicação deployada em produção!"
+        }
+      }
     }
+    
     failure {
-      sh 'echo "Pipeline falhou!"'
+      script {
+        echo "Pipeline falhou!"
+        echo "Verifique os logs para mais detalhes"
+      }
+    }
+    
+    unstable {
+      echo "Pipeline instável - alguns testes falharam"
     }
   }
 }
