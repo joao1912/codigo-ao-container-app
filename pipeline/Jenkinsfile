@@ -25,7 +25,6 @@ spec:
     AWS_REGION = credentials('aws-region')
     ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
     IMAGE_NAME = 'app-node'
-    K8S_REPO = credentials('k8s-repo-url')
     DOCKERFILE_PATH = './Dockerfile'
   }
 
@@ -140,7 +139,7 @@ spec:
               ) {
                   sh """
                     # Clona o repo de manifests
-                    git clone $K8S_REPO k8s-manifests
+                    git clone https://github.com/joao1912/codigo-ao-container-app.git k8s-manifests
                     cd k8s-manifests/k8s
                     
                     if [ ! -f deployment.yaml ]; then
