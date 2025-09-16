@@ -154,6 +154,8 @@ spec:
                       fi
 
                       git add deployment.yaml
+                      git config user.name "Jenkins CI"
+                      git config user.email "jenkins@yourdomain.com"
                       git commit -m "Deploy $IMAGE_NAME:$BUILD_TAG
                       - Build: $BUILD_NUMBER
                       - Commit: $COMMIT_ID
