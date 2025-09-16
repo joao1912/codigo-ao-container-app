@@ -195,13 +195,6 @@ spec:
   }
 
   post {
-    always {
-      cleanWs(
-        deleteDirs: true,
-        notFailBuild: true,
-        patterns: [[pattern: 'k8s-manifests', type: 'INCLUDE']]
-      )
-    }
     
     success {
       script {
