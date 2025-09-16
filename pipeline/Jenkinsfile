@@ -140,6 +140,8 @@ spec:
                       fi
 
                       echo "Atualizando imagem no deployment..."
+                      : "${AWS_REGION:=us-east-1}"
+                      ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
                       echo "Nova imagem: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG"
 
                       # Atualiza a imagem usando yq ou sed
@@ -174,7 +176,6 @@ spec:
         success {
             script {
                 echo "Deploy realizado com sucesso!"
-                echo "Imagem: ${env.ECR_REGISTRY}/${env.IMAGE_NAME}:${env.BUILD_TAG}"
                 if (env.BRANCH_NAME == 'main') {
                     echo "Aplicação deployada em produção!"
                 }
