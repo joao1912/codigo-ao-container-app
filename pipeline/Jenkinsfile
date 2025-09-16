@@ -130,68 +130,55 @@ spec:
     }
 
     stage('Update Kubernetes Manifests') {
-      when {
-        branch 'main'
-      }
+      when { branch 'main' }
       steps {
-        script {
-          echo "Atualizando manifests Kubernetes..."
-          
-          withCredentials([
-            gitUsernamePassword(
-              credentialsId: 'git-credentials',
-              gitToolName: 'Default'
-            )
-          ]) {
-            withEphemeralContainer(
-              image: 'alpine/git:latest'
-            ) {
-              sh '''
-                
-                git config --global user.name "Jenkins CI"
-                git config --global user.email "jenkins@empresa.com"
-                git config --global init.defaultBranch main
-                
-                echo "Clonando repositório de manifests..."
-                git clone $K8S_REPO k8s-manifests
-                cd k8s-manifests/k8s
-                
-                if [ ! -f deployment.yaml ]; then
-                  echo "Arquivo deployment.yaml não encontrado!"
-                  exit 1
-                fi
-                
-                echo "Atualizando imagem no deployment..."
-                echo "Nova imagem: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG"
-                
-                if command -v yq > /dev/null; then
-                  yq eval ".spec.template.spec.containers[0].image = \\"$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG\\"" -i deployment.yaml
-                else
-                  sed -i "s|image: .*/$IMAGE_NAME:.*|image: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG|g" deployment.yaml
-                fi
-                
-                if git diff --quiet deployment.yaml; then
-                  echo "Nenhuma mudança detectada no deployment.yaml"
-                  exit 0
-                fi
-                
-                echo "Commitando mudanças..."
-                git add deployment.yaml
-                git commit -m "Deploy $IMAGE_NAME:$BUILD_TAG
-                
-                - Build: $BUILD_NUMBER
-                - Commit: $COMMIT_ID
-                - Pipeline: $BUILD_URL"
-                
-                git push origin main
-                
-                echo "Manifests atualizados com sucesso!"
-              '''
-            }
+          script {
+              echo "Atualizando manifests Kubernetes..."
+              
+              withEphemeralContainer(
+                image: 'alpine/git:latest'
+              ) {
+                  sh """
+                    # Clona o repo de manifests
+                    git clone $K8S_REPO k8s-manifests
+                    cd k8s-manifests/k8s
+                    
+                    if [ ! -f deployment.yaml ]; then
+                        echo "Arquivo deployment.yaml não encontrado!"
+                        exit 1
+                    fi
+                    
+                    echo "Atualizando imagem no deployment..."
+                    echo "Nova imagem: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG"
+                    
+                    if command -v yq > /dev/null; then
+                        yq eval ".spec.template.spec.containers[0].image = \\"$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG\\"" -i deployment.yaml
+                    else
+                        sed -i "s|image: .*/$IMAGE_NAME:.*|image: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG|g" deployment.yaml
+                    fi
+                    
+                    if git diff --quiet deployment.yaml; then
+                        echo "Nenhuma mudança detectada no deployment.yaml"
+                        exit 0
+                    fi
+                    
+                    echo "Commitando mudanças..."
+                    git add deployment.yaml
+                    git commit -m "Deploy $IMAGE_NAME:$BUILD_TAG
+                    
+                    - Build: $BUILD_NUMBER
+                    - Commit: $COMMIT_ID
+                    - Pipeline: $BUILD_URL"
+                    
+                    git push origin main
+                    
+                    echo "Manifests atualizados com sucesso!"
+                  """
+              }
           }
-        }
       }
     }
+
   }
 
   post {
