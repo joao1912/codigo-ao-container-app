@@ -127,16 +127,13 @@ spec:
        stage('Update Kubernetes Manifests') {
         steps {
             container('node') {
-                withCredentials([usernamePassword(credentialsId: 'git-credentials', 
-                                                  usernameVariable: 'GIT_USER', 
-                                                  passwordVariable: 'GIT_TOKEN')]) {
+                withCredentials([usernamePassword(credentialsId: 'git-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'), string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
                     sh '''
                       #!/bin/bash
                       set -eu
 
                       echo "Atualizando manifests Kubernetes..."
 
-                      # Clona o repo privado usando usuário + token
                       git clone https://$GIT_USER:$GIT_TOKEN@github.com/joao1912/codigo-ao-container-infra-priv.git k8s-manifests
                       cd k8s-manifests/k8s
 
@@ -151,7 +148,6 @@ spec:
                           sed -i "s|image: .*/$IMAGE_NAME:.*|image: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG|g" deployment.yaml
                       fi
 
-                      # Verifica se houve mudanças
                       if git diff --quiet deployment.yaml; then
                           echo "Nenhuma mudança detectada no deployment.yaml"
                           exit 0
@@ -165,8 +161,8 @@ spec:
 
                       git push origin main
                       '''
-                  }
-              }
+                }
+            }
           }
       }
 
