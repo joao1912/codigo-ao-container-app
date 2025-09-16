@@ -10,7 +10,7 @@ spec:
     - name: jnlp
       image: jenkins/inbound-agent:latest
     - name: node
-      image: node:18-alpine
+      image: node:18-bullseye
       command:
         - cat
       tty: true
@@ -126,45 +126,48 @@ spec:
 
         stage('Update Kubernetes Manifests') {
             steps {
-                container('node') {
-                    sh '''
-                        echo "Atualizando manifests Kubernetes..."
+              container('node') {
+                  sh '''
+                      set -euo pipefail
 
-                        # Clona o repositório público
-                        git clone https://github.com/joao1912/codigo-ao-container-app.git k8s-manifests
-                        cd k8s-manifests/k8s
+                      echo "Atualizando manifests Kubernetes..."
 
-                        if [ ! -f deployment.yaml ]; then
-                            echo "Arquivo deployment.yaml não encontrado!"
-                            exit 1
-                        fi
+                      # Clona o repositório com os manifests
+                      git clone https://github.com/joao1912/codigo-ao-container-app.git k8s-manifests
+                      cd k8s-manifests/k8s
 
-                        echo "Atualizando imagem no deployment..."
-                        echo "Nova imagem: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG"
+                      if [ ! -f deployment.yaml ]; then
+                          echo "Arquivo deployment.yaml não encontrado!"
+                          exit 1
+                      fi
 
-                        if command -v yq > /dev/null; then
-                            yq eval ".spec.template.spec.containers[0].image = \\"$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG\\"" -i deployment.yaml
-                        else
-                            sed -i "s|image: .*/$IMAGE_NAME:.*|image: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG|g" deployment.yaml
-                        fi
+                      echo "Atualizando imagem no deployment..."
+                      echo "Nova imagem: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG"
 
-                        if git diff --quiet deployment.yaml; then
-                            echo "Nenhuma mudança detectada no deployment.yaml"
-                            exit 0
-                        fi
+                      # Atualiza a imagem usando yq ou sed
+                      if command -v yq > /dev/null; then
+                          yq eval ".spec.template.spec.containers[0].image = \\"$ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG\\"" -i deployment.yaml
+                      else
+                          sed -i "s|image: .*/$IMAGE_NAME:.*|image: $ECR_REGISTRY/$IMAGE_NAME:$BUILD_TAG|g" deployment.yaml
+                      fi
 
-                        echo "Commitando mudanças..."
-                        git add deployment.yaml
-                        git commit -m "Deploy $IMAGE_NAME:$BUILD_TAG
+                      if git diff --quiet deployment.yaml; then
+                          echo "Nenhuma mudança detectada no deployment.yaml"
+                          exit 0
+                      fi
 
-- Build: $BUILD_NUMBER
-- Commit: $COMMIT_ID
-- Pipeline: $BUILD_URL"
+                      echo "Commitando mudanças..."
+                      git add deployment.yaml
+                      git commit -m "Deploy $IMAGE_NAME:$BUILD_TAG
 
-                        git push origin main
-                        echo "Manifests atualizados com sucesso!"
-                    '''
-                }
+      - Build: $BUILD_NUMBER
+      - Commit: $COMMIT_ID
+      - Pipeline: $BUILD_URL"
+
+                      git push origin main
+                      echo "Manifests atualizados com sucesso!"
+                  '''
+              }
             }
         }
     }
