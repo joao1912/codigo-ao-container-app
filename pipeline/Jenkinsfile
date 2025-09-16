@@ -1,0 +1,95 @@
+pipeline {
+  agent any
+  
+  environment {
+    AWS_ACCOUNT_ID = credentials('aws-account-id')
+    AWS_REGION = 'us-east-1'
+    ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+    IMAGE_NAME = 'app-node'
+    K8S_REPO = 'https://github.com/joao1912/codigo-ao-container-infra.git'
+  }
+
+  stages {
+    stage('Install Packages') {
+      steps {
+        sh 'echo "Instalando pacotes..."'
+        sh 'npm i'
+      }
+    }
+
+    stage('Building Project') {
+      steps {
+        sh 'echo "Realizando o build dos arquivos..."'
+        sh 'npm run build'
+      }
+    }
+
+    stage('Running tests') {
+      steps {
+        sh 'echo "Executando os testes..."'
+        sh 'npm run test'
+      }
+    }
+
+    stage('Building Docker Image') {
+      steps {
+        script {
+          sh 'echo "Realizando o build da imagem docker..."'
+          commitId = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          dockerapp = docker.build("${IMAGE_NAME}:${commitId}", "-f Dockerfile .")
+        }
+      }
+    }
+
+    stage('Pushing Docker Image') {
+      steps {
+        script {
+          docker.withRegistry("https://${ECR_REGISTRY}", 'aws-ecr-credentials') {
+            dockerapp.push(commitId)
+            dockerapp.push("latest")
+          }
+        }
+      }
+    }
+
+    stage('Update K8s Manifests') {
+      steps {
+        script {
+          dir('k8s-manifests') {
+            git credentialsId: 'git-credentials', 
+                url: "${K8S_REPO}",
+                branch: 'main'
+
+            cd 'k8s'
+            
+            sh """
+              echo "Atualizando deployment.yaml com imagem: ${ECR_REGISTRY}/${IMAGE_NAME}:${commitId}"
+              sed -i 's|image: .*${IMAGE_NAME}:.*|image: ${ECR_REGISTRY}/${IMAGE_NAME}:${commitId}|g' deployment.yaml
+            """
+            
+            sh """
+              git config user.name "Jenkins"
+              git config user.email "jenkins@empresa.com"
+              git add deployment.yaml
+              git commit -m "Update ${IMAGE_NAME} to ${commitId}"
+              git push origin main
+            """
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'echo "Pipeline finalizada!"'
+    }
+    success {
+      sh 'echo "Deploy realizado com sucesso!"'
+      sh 'echo "Imagem: ${ECR_REGISTRY}/${IMAGE_NAME}:${commitId}"'
+    }
+    failure {
+      sh 'echo "Pipeline falhou!"'
+    }
+  }
+}
