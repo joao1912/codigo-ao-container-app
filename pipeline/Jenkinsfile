@@ -85,12 +85,12 @@ spec:
           steps {
               container('kaniko') {
                 withCredentials([
-                    // [
-                    //     $class: 'AmazonWebServicesCredentialsBinding',
-                    //     credentialsId: 'aws-ecr-credentials',
-                    //     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    //     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                    // ],
+                    [
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-ecr-credentials',
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ],
                     string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')
                 ]) {
                     sh '''
